@@ -1,34 +1,92 @@
 #pragma once
 // Simulation template, based on the Microsoft DX11 tutorial 04
 
-#include <windows.h>
-#include <d3d11_1.h>
-#include <d3dcompiler.h>
-#include <directxmath.h>
 #include <atlbase.h>
 #include <fstream>
+#include "ShaderManager.h"
 
 using namespace DirectX;
 
 #define COMPILE_CSO
 
+constexpr UINT _windowWidth = 1200;
+constexpr UINT _windowHeight = 900;
+
 //--------------------------------------------------------------------------------------
 // Structures
 //--------------------------------------------------------------------------------------
-struct SimpleVertex
-{
-	XMFLOAT3 Pos;
-	XMFLOAT4 Color;
-};
 
-
-struct ConstantBuffer
+struct ConstantBufferCamera
 {
-	XMMATRIX mWorld;
 	XMMATRIX mView;
 	XMMATRIX mProjection;
+	XMVECTOR mEyePos;
 };
 
+enum CameraType
+{
+	ORTHOGRAPHIC,
+	PERSPECTIVE
+};
+
+struct Camera
+{
+	XMVECTOR eye;
+	XMVECTOR at;
+	XMVECTOR up;
+	XMMATRIX view = {};
+	XMMATRIX projection = {};
+	float radius = 3.0f;
+	float zoom = 1.0f; // Default zoom level
+	XMFLOAT2 zoomLimits = { 0.1f, 10.0f };
+
+	Camera() { initCamera(); }
+
+	void initCamera()
+	{
+		eye = XMVectorSet(0.0f, radius, radius, 0.0f);
+		at = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
+		up = XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);
+		zoom = 1.0f;
+		updateViewProjection();
+	}
+
+	void updateViewProjection() {
+		// Adjust field of view (FOV) based on zoom level
+		if (zoom < zoomLimits.x) zoom = zoomLimits.x;
+		if (zoom > zoomLimits.y) zoom = zoomLimits.y;
+
+		const float fov = XM_PIDIV2 / zoom; // Zoom scales the FOV
+		projection = XMMatrixPerspectiveFovLH(fov, _windowWidth / _windowHeight, 0.01f, 1000.0f);
+		view = XMMatrixLookAtLH(eye, at, up);
+	}
+
+	void rotate(float yaw, float pitch)
+	{
+		float x = radius * sin(yaw);
+		float y = radius * cos(yaw);
+		float z = radius * cos(pitch);
+
+		eye = XMVectorSet(x, y, z, 0.0f);
+		at = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
+		up = XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);
+
+		view = XMMatrixLookAtLH(eye, at, up);
+
+		updateViewProjection();
+	}
+
+	void rotateUp(float angle) {
+		float x = radius * sin(angle);
+		float y = radius * cos(angle);
+
+		eye = XMVectorSet(x, y, radius, 0.0f);
+		at = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f); 
+		up = XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f); 
+
+		updateViewProjection();
+	}
+};
 
 class D3DFramework final {
 
@@ -49,13 +107,59 @@ class D3DFramework final {
 	CComPtr <ID3D11Buffer> _pVertexBuffer;
 	CComPtr <ID3D11Buffer> _pIndexBuffer;
 	CComPtr <ID3D11Buffer> _pConstantBuffer;
+	CComPtr <ID3D11Buffer> _cameraConstantBuffer;
+	CComPtr <ID3D11RasterizerState> _rasterizerState;
 	XMMATRIX _World = {};
 	XMMATRIX _View = {};
 	XMMATRIX _Projection = {};
 
-	float _rotation = 0.0f;
-	
+	// camera rotation with mouse drag
+	POINT _lastMousePos;
+	float _yaw = 0.0f;
+	float _pitch = 0.0f;
+	float _sensitivity = 0.001f;
+	float _zoomSensitivity = 0.1f;
+	bool _isMouseDown = false;
+
+
+	XMFLOAT4 _bgColour = { 0.54f, 0.75f, 0.77f, 1.0f };
+	float deltaTime = 0.0f;
+	const float deltaTimeFactors[4] = {0.25f, 0.5f, 1.0f, 2.0f};
+	float deltaTimeFactor = deltaTimeFactors[2];
+	static float time;
+	const float fixedTimesteps[4] = { 0.002f, 0.004f, 0.008f, 0.016f };
+	float fixedTimestep = fixedTimesteps[1];
+	const float maxSteps[4] = { 8, 4, 2, 1 };
+	int numMaxStep = maxSteps[1];
+	float cumulativeTime = 0.0f;
+
+	Camera _camera;
+
+	// scenario stuffs
+	//std::unique_ptr<Scenario> _scenario;
+
 	static std::unique_ptr<D3DFramework> _instance;
+
+	void initImGui();
+	void renderImGui();
+
+	/*void setScenario(std::unique_ptr<Scenario> scenario)
+	{
+		if (_scenario)
+			_scenario.get()->onUnload();
+		_scenario = std::move(scenario);
+		_scenario.get()->onLoad();
+	}
+
+	void resetScenario()
+	{
+		if (!_scenario) return;
+
+		_scenario.get()->onUnload();
+		_scenario.get()->onLoad();
+
+	}*/
+
 public:
 
 	D3DFramework() = default;
@@ -64,15 +168,20 @@ public:
 	D3DFramework operator=(const D3DFramework&) = delete;
 	D3DFramework operator=(const D3DFramework&&) = delete;
 	~D3DFramework();
-	
+
 	static D3DFramework& getInstance() { return *_instance; }
 
 	// callback function that Windows calls whenever an event occurs for the window (e.g., mouse clicks, key presses)
 	// Windows expects this function to have a specific signature and does not pass an instance of the class to it
 	static LRESULT CALLBACK wndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
 	HRESULT initWindow(HINSTANCE hInstance, int nCmdShow);
-	// utility function that doesn't require an instance of the class
-	static HRESULT compileShaderFromFile(const WCHAR* szFileName, LPCSTR szEntryPoint, LPCSTR szShaderModel, ID3DBlob** ppBlobOut);
 	HRESULT initDevice();
 	void render();
+
+	HWND getWindowHandle() const { return _hWnd; }
+	ID3D11Device* getDevice() const { return _pd3dDevice; }
+	ID3D11DeviceContext* getDeviceContext() const { return _pImmediateContext; }
+
+	void setBackgroudColor(const XMFLOAT4& colour) { _bgColour = colour; }
+	XMFLOAT4 getBackgroundColor() const { return _bgColour; }
 };

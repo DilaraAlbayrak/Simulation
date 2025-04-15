@@ -1,5 +1,4 @@
 #include "D3DFramework.h"
-#include "Scenario.h"
 
 //--------------------------------------------------------------------------------------
 // Entry point to the program. Initializes everything and goes into a message processing 
@@ -12,7 +11,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPWSTR, _
 	if (FAILED(app.initWindow(hInstance, nShowCmd)))
 		return 0;
 
-	if (FAILED(app.initDevice())) 
+	if (FAILED(app.initDevice()))
 		return 0;
 
 	// Main message loop
