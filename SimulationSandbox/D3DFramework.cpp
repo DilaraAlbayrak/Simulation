@@ -5,6 +5,15 @@
 #include <imgui_impl_dx11.h>
 #include <imgui_impl_win32.h>
 
+#include "Scenario1.h"
+#include "Scenario2.h"
+#include "Scenario3.h"
+#include "Scenario4.h"
+#include "Scenario5.h"
+#include "TestScenario1.h"
+#include "TestScenario2.h"
+#include "TestScenario3.h"
+
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 std::unique_ptr<D3DFramework> D3DFramework::_instance = std::make_unique<D3DFramework>();
@@ -38,8 +47,9 @@ LRESULT CALLBACK D3DFramework::wndProc(HWND hWnd, UINT message, WPARAM wParam, L
 			_instance->_yaw += dx;
 			_instance->_pitch -= dy;
 
-			if (_instance->_pitch > XM_PIDIV2 - 0.1f) _instance->_pitch = XM_PIDIV2 - 0.1f;
-			if (_instance->_pitch < -XM_PIDIV2 + 0.1f) _instance->_pitch = -XM_PIDIV2 + 0.1f;
+			float epsilon = 0.01f;
+			if (_instance->_pitch > XM_PIDIV2 - epsilon) _instance->_pitch = XM_PIDIV2 - epsilon;
+			if (_instance->_pitch < -XM_PIDIV2 + epsilon) _instance->_pitch = -XM_PIDIV2 + epsilon;
 			
 			_instance->_camera.rotate(_instance->_yaw, _instance->_pitch);
 
@@ -56,7 +66,7 @@ LRESULT CALLBACK D3DFramework::wndProc(HWND hWnd, UINT message, WPARAM wParam, L
 		else if (wheelDelta < 0) // Scroll down, Zoom out
 			zoomAmount -= _instance->_zoomSensitivity;
 
-		_instance->_camera.zoom = zoomAmount;
+		_instance->_camera.zoom *= zoomAmount;
 		_instance->_camera.updateViewProjection();
 		break;
 	}
@@ -103,7 +113,7 @@ HRESULT D3DFramework::initWindow(HINSTANCE hInstance, int nCmdShow) {
 	_hInst = hInstance;
 	RECT rc = { 0, 0, _windowWidth, _windowHeight };
 	AdjustWindowRect(&rc, WS_OVERLAPPEDWINDOW, FALSE);
-	_hWnd = CreateWindow(L"Starter Template", L"Simulation Sandbox",
+	_hWnd = CreateWindow(L"Starter Template", L"Networked AntiGravity Chamber",
 		WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
 		CW_USEDEFAULT, CW_USEDEFAULT, rc.right - rc.left, rc.bottom - rc.top, nullptr, nullptr, hInstance,
 		nullptr);
@@ -247,15 +257,45 @@ HRESULT D3DFramework::initDevice()
 		return hr;
 	}
 
-	//// create rasterizer state to disable backface culling
-	//D3D11_RASTERIZER_DESC rasterizerDesc = {};
-	//rasterizerDesc.CullMode = D3D11_CULL_NONE;
-	//rasterizerDesc.FillMode = D3D11_FILL_SOLID;
-	//hr = _pd3dDevice->CreateRasterizerState(&rasterizerDesc, &_rasterizerState);
-	//if (FAILED(hr)) {
-	//	return hr;
-	//}
-	//_pImmediateContext->RSSetState(_rasterizerState);
+	// Create depth stencil buffer
+	D3D11_TEXTURE2D_DESC depthStencilDesc = {};
+	depthStencilDesc.Width = _windowWidth;
+	depthStencilDesc.Height = _windowHeight;
+	depthStencilDesc.MipLevels = 1;
+	depthStencilDesc.ArraySize = 1;
+	depthStencilDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+	depthStencilDesc.SampleDesc.Count = 1;
+	depthStencilDesc.SampleDesc.Quality = 0;
+	depthStencilDesc.Usage = D3D11_USAGE_DEFAULT;
+	depthStencilDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+
+	hr = _pd3dDevice->CreateTexture2D(&depthStencilDesc, nullptr, &_depthStencilBuffer);
+	if (FAILED(hr)) return hr;
+
+	hr = _pd3dDevice->CreateDepthStencilView(_depthStencilBuffer, nullptr, &_depthStencilView);
+	if (FAILED(hr)) return hr;
+
+	//// Create and store depth stencil state
+	//D3D11_DEPTH_STENCIL_DESC dsDesc = {};
+	//dsDesc.DepthEnable = TRUE;
+	//dsDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+	//dsDesc.DepthFunc = D3D11_COMPARISON_LESS;
+
+	//hr = _pd3dDevice->CreateDepthStencilState(&dsDesc, &_depthStencilState);
+	//if (FAILED(hr)) return hr;
+
+	// create rasterizer state to disable backface culling
+	/*D3D11_RASTERIZER_DESC rasterizerDesc = {};
+	rasterizerDesc.CullMode = D3D11_CULL_BACK;
+	rasterizerDesc.FillMode = D3D11_FILL_SOLID;
+	rasterizerDesc.DepthBias = 1;
+	rasterizerDesc.SlopeScaledDepthBias = 1.0f;
+	rasterizerDesc.DepthBiasClamp = 0.0f;
+	hr = _pd3dDevice->CreateRasterizerState(&rasterizerDesc, &_rasterizerState);
+	if (FAILED(hr)) {
+		return hr;
+	}
+	_pImmediateContext->RSSetState(_rasterizerState);*/
 
 	// Initialize the camera
 	//initCamera();
@@ -281,40 +321,47 @@ void D3DFramework::renderImGui() {
 	if (ImGui::BeginMainMenuBar()) {
 		if (ImGui::BeginMenu("Scenario"))
 		{
-			if (ImGui::MenuItem("Scenario 0", nullptr, false)) {
-				//setScenario(std::make_unique<Moving>(_pd3dDevice, _pImmediateContext));
-			}
 			if (ImGui::MenuItem("Scenario 1", nullptr, false)) {
-				//setScenario(std::make_unique<Moving>(_pd3dDevice, _pImmediateContext));
+				setScenario(std::make_unique<Scenario1>(_pd3dDevice, _pImmediateContext));
 			}
 			if (ImGui::MenuItem("Scenario 2", nullptr, false)) {
-				//setScenario(std::make_unique<Colliding>(_pd3dDevice, _pImmediateContext));
+				setScenario(std::make_unique<Scenario2>(_pd3dDevice, _pImmediateContext));
 			}
 			if (ImGui::MenuItem("Scenario 3", nullptr, false)) {
-				//setScenario(std::make_unique<Bouncing>(_pd3dDevice, _pImmediateContext));
+				setScenario(std::make_unique<Scenario3>(_pd3dDevice, _pImmediateContext));
 			}
 			if (ImGui::MenuItem("Scenario 4", nullptr, false)) {
-				//setScenario(std::make_unique<Bouncing>(_pd3dDevice, _pImmediateContext));
+				setScenario(std::make_unique<Scenario4>(_pd3dDevice, _pImmediateContext));
+			}
+			if (ImGui::MenuItem("Scenario 5", nullptr, false)) {
+				setScenario(std::make_unique<Scenario5>(_pd3dDevice, _pImmediateContext));
+			}
+			if (ImGui::MenuItem("Test Scenario 1", nullptr, false)) {
+				setScenario(std::make_unique<TestScenario1>(_pd3dDevice, _pImmediateContext));
+			}
+			if (ImGui::MenuItem("Test Scenario 2", nullptr, false)) {
+				setScenario(std::make_unique<TestScenario2>(_pd3dDevice, _pImmediateContext));
+			}
+			if (ImGui::MenuItem("Test Scenario 3", nullptr, false)) {
+				setScenario(std::make_unique<TestScenario3>(_pd3dDevice, _pImmediateContext));
 			}
 			ImGui::EndMenu();
 		}
 		ImGui::EndMainMenuBar();
 	}
 
-	//if (_scenario)
-	if (false)
+	if (_scenario)
+	//if (false)
 	{
 		ImGui::Begin("Statistics");
 		ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
 		ImGui::Text("dt: %.4f", deltaTime);
 		ImGui::End();
 
-		static float cameraAngle = 0.0f;
 		if (ImGui::BeginMainMenuBar()) {
 			if (ImGui::BeginMenu("Camera")) {
 				if (ImGui::MenuItem("Reset", nullptr, false, true)) {
 					_instance->_camera.initCamera();
-					cameraAngle = 0.0f;
 				}
 				ImGui::EndMenu();
 			}
@@ -326,7 +373,6 @@ void D3DFramework::renderImGui() {
 
 		ImGui::Begin("Scene Controls");
 		ImGui::PushItemWidth(100);
-		ImGui::SliderAngle("Camera rotation", &cameraAngle, 0.0f, 360.0f);
 		if (ImGui::SliderInt("Time coefficient:", &selectedTimeCoefIndex, 0, 3, ""))
 		{
 			// Ensure the index stays within the range of the array
@@ -405,12 +451,15 @@ void D3DFramework::render()
 	deltaTime = (time - currentTime) * deltaTimeFactor;
 	currentTime = time;
 
-	_pImmediateContext->OMSetRenderTargets(1, &_pRenderTargetView.p, nullptr);
+	_pImmediateContext->OMSetDepthStencilState(_depthStencilState, 1);
+	//_pImmediateContext->OMSetRenderTargets(1, &_pRenderTargetView.p, nullptr);
+	_pImmediateContext->OMSetRenderTargets(1, &_pRenderTargetView.p, _depthStencilView.p);
 	//
 	// Clear the back buffer
 	//
 	float clearColour[4] = { _bgColour.x, _bgColour.y, _bgColour.z, _bgColour.w };
 	_pImmediateContext->ClearRenderTargetView(_pRenderTargetView, clearColour);
+	_pImmediateContext->ClearDepthStencilView(_depthStencilView, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
 
 	// Pass camera matrices to the constant buffer
 	const ConstantBufferCamera cbc{
@@ -424,8 +473,10 @@ void D3DFramework::render()
 		}
 	};
 
-	/*if (_scenario)
+	if (_scenario)
 	{
+		_scenario->onFrameUpdate();
+
 		cumulativeTime += deltaTime;
 		int physicsSteps = 0;
 
@@ -437,7 +488,7 @@ void D3DFramework::render()
 		}
 
 		_scenario->renderObjects();
-	}*/
+	}
 	
 	_pImmediateContext->UpdateSubresource(_cameraConstantBuffer, 0, nullptr, &cbc, 0, 0);
 	_pImmediateContext->VSSetConstantBuffers(0, 1, &_cameraConstantBuffer.p); // register b0

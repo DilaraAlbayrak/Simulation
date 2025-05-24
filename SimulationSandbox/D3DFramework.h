@@ -3,7 +3,7 @@
 
 #include <atlbase.h>
 #include <fstream>
-#include "ShaderManager.h"
+#include "Scenario.h"
 
 using namespace DirectX;
 
@@ -36,53 +36,57 @@ struct Camera
 	XMVECTOR up;
 	XMMATRIX view = {};
 	XMMATRIX projection = {};
-	float radius = 3.0f;
+	float radius = 6.2f;
 	float zoom = 1.0f; // Default zoom level
-	XMFLOAT2 zoomLimits = { 0.1f, 10.0f };
+	XMFLOAT2 zoomLimits = { 0.1f, 4.0f };
 
 	Camera() { initCamera(); }
 
 	void initCamera()
 	{
-		eye = XMVectorSet(0.0f, radius, radius, 0.0f);
+		eye = XMVectorSet(0.0f, 0.0f, radius, 0.0f);
 		at = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
-		up = XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);
+		up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
 		zoom = 1.0f;
 		updateViewProjection();
 	}
 
 	void updateViewProjection() {
 		// Adjust field of view (FOV) based on zoom level
-		if (zoom < zoomLimits.x) zoom = zoomLimits.x;
-		if (zoom > zoomLimits.y) zoom = zoomLimits.y;
+		//if (zoom < zoomLimits.x) zoom = zoomLimits.x;
+		//if (zoom > zoomLimits.y) zoom = zoomLimits.y;
 
-		const float fov = XM_PIDIV2 / zoom; // Zoom scales the FOV
-		projection = XMMatrixPerspectiveFovLH(fov, _windowWidth / _windowHeight, 0.01f, 1000.0f);
+		constexpr float baseFov = XMConvertToRadians(90.0f); // Base FOV in radians
+		const float fov = baseFov / zoom; // Zoom scales the FOV
+		//const float fov = XM_PIDIV2 / zoom; // Zoom scales the FOV
+		projection = XMMatrixPerspectiveFovLH(fov, _windowWidth / _windowHeight, 0.1f, 1000.0f);
 		view = XMMatrixLookAtLH(eye, at, up);
 	}
+
+	//void updateViewProjection()
+	//{
+	//	constexpr float baseHeight = 20.0f;                        
+	//	const float viewHeight = baseHeight / zoom;
+	//	const float aspect = _windowWidth / _windowHeight;
+	//	const float viewWidth = viewHeight * aspect;
+
+	//	projection = XMMatrixOrthographicLH(viewWidth, viewHeight, 0.1f, 1000.0f);
+
+	//
+	//	view = XMMatrixLookAtLH(eye, at, up);
+	//}
 
 	void rotate(float yaw, float pitch)
 	{
 		float x = radius * sin(yaw);
-		float y = radius * cos(yaw);
-		float z = radius * cos(pitch);
-
+		float y = radius * sin(pitch);
+		float z = radius * cos(yaw) * cos(pitch);
+		//float y = 0.0f;
 		eye = XMVectorSet(x, y, z, 0.0f);
-		at = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
-		up = XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);
+		at = XMVectorZero();
+		up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
 
 		view = XMMatrixLookAtLH(eye, at, up);
-
-		updateViewProjection();
-	}
-
-	void rotateUp(float angle) {
-		float x = radius * sin(angle);
-		float y = radius * cos(angle);
-
-		eye = XMVectorSet(x, y, radius, 0.0f);
-		at = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f); 
-		up = XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f); 
 
 		updateViewProjection();
 	}
@@ -109,16 +113,19 @@ class D3DFramework final {
 	CComPtr <ID3D11Buffer> _pConstantBuffer;
 	CComPtr <ID3D11Buffer> _cameraConstantBuffer;
 	CComPtr <ID3D11RasterizerState> _rasterizerState;
+	CComPtr<ID3D11Texture2D> _depthStencilBuffer;
+	CComPtr<ID3D11DepthStencilView> _depthStencilView;
+	CComPtr<ID3D11DepthStencilState> _depthStencilState;
 	XMMATRIX _World = {};
 	XMMATRIX _View = {};
 	XMMATRIX _Projection = {};
 
 	// camera rotation with mouse drag
-	POINT _lastMousePos;
+	POINT _lastMousePos = { 0, 0 };
 	float _yaw = 0.0f;
 	float _pitch = 0.0f;
 	float _sensitivity = 0.001f;
-	float _zoomSensitivity = 0.1f;
+	float _zoomSensitivity = 0.2f;
 	bool _isMouseDown = false;
 
 
@@ -135,15 +142,14 @@ class D3DFramework final {
 
 	Camera _camera;
 
-	// scenario stuffs
-	//std::unique_ptr<Scenario> _scenario;
+	std::unique_ptr<Scenario> _scenario;
 
 	static std::unique_ptr<D3DFramework> _instance;
 
 	void initImGui();
 	void renderImGui();
 
-	/*void setScenario(std::unique_ptr<Scenario> scenario)
+	void setScenario(std::unique_ptr<Scenario> scenario)
 	{
 		if (_scenario)
 			_scenario.get()->onUnload();
@@ -158,7 +164,7 @@ class D3DFramework final {
 		_scenario.get()->onUnload();
 		_scenario.get()->onLoad();
 
-	}*/
+	}
 
 public:
 
